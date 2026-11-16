@@ -1,1 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lucky Scratch</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;
+background:linear-gradient(145deg,#101d48,#263d78);font-family:system-ui,Arial,sans-serif;color:#fff;padding:20px}
+.card{width:min(420px,100%);background:#fff;color:#172554;border-radius:24px;padding:25px;
+text-align:center;box-shadow:0 18px 50px #0005}
+h1{margin:0;color:#b7791f;font-size:2rem}p{color:#475569}
+.ticket{position:relative;height:190px;margin:22px 0;border-radius:18px;overflow:hidden;
+background:linear-gradient(135deg,#fef3c7,#fde68a);display:grid;place-items:center}
+#result{padding:15px;font-weight:900;font-size:1.45rem;color:#172554}
+#cover{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}
+button{border:0;border-radius:14px;padding:14px 20px;background:#1d4ed8;color:white;
+font-size:1rem;font-weight:700;width:100%;cursor:pointer}
+button:disabled{opacity:.6;cursor:wait}.hint{font-size:.9rem;color:#64748b}
+</style>
+</head>
+<body>
+<main class="card">
+  <h1>LUCKY SCRATCH!</h1>
+  <p>Every scan gives you a brand-new chance.</p>
+  <div class="ticket">
+    <div id="result">Your prize is hidden!</div>
+    <canvas id="cover"></canvas>
+  </div>
+  <p class="hint" id="hint">Scratch the silver area to reveal your result.</p>
+  <button id="new" type="button">Get my scratch card</button>
+  <p class="hint">50% No Prize · 40% Small Prize · 10% Big Prize</p>
+</main>
+<script>
+const canvas=document.getElementById('cover'), ctx=canvas.getContext('2d');
+const result=document.getElementById('result'), hint=document.getElementById('hint');
+const button=document.getElementById('new');
+let scratching=false, revealed=false, ready=false;
 
+function paintCover(){
+  const rect=canvas.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
+  canvas.width=Math.round(rect.width*dpr); canvas.height=Math.round(rect.height*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  const g=ctx.createLinearGradient(0,0,rect.width,rect.height);
+  g.addColorStop(0,'#a1a1aa');g.addColorStop(.5,'#e4e4e7');g.addColorStop(1,'#71717a');
+  ctx.globalCompositeOperation='source-over';ctx.fillStyle=g;ctx.fillRect(0,0,rect.width,rect.height);
+  ctx.fillStyle='#27272a';ctx.font='bold 22px system-ui';ctx.textAlign='center';
+  ctx.fillText('SCRATCH HERE',rect.width/2,rect.height/2+8);
+}
+function point(e){
+  const r=canvas.getBoundingClientRect();
+  return {x:e.clientX-r.left,y:e.clientY-r.top};
+}
+function scratchAt(e){
+  if(!ready||revealed)return;
+  const p=point(e);ctx.globalCompositeOperation='destination-out';
+  ctx.beginPath();ctx.arc(p.x,p.y,22,0,Math.PI*2);ctx.fill();
+  if(Math.random()<0.12) checkReveal();
+}
+function checkReveal(){
+  const pixels=ctx.getImageData(0,0,canvas.width,canvas.height).data;
+  let clear=0,total=0;
+  for(let i=3;i<pixels.length;i+=16){total++;if(pixels[i]===0)clear++;}
+  if(clear/total>.42){
+    revealed=true;ctx.clearRect(0,0,canvas.width,canvas.height);
+    hint.textContent='Your result is revealed!';
+  }
+}
+canvas.addEventListener('pointerdown',e=>{scratching=true;canvas.setPointerCapture(e.pointerId);scratchAt(e)});
+canvas.addEventListener('pointermove',e=>{if(scratching)scratchAt(e)});
+canvas.addEventListener('pointerup',()=>{scratching=false;checkReveal()});
+canvas.addEventListener('pointercancel',()=>scratching=false);
+
+async function newCard(){
+  button.disabled=true;hint.textContent='Picking your result...';
+  result.textContent='Good luck!';
+  revealed=false;ready=false;
+  try{
+    const response=await fetch('/api/scratch',{method:'POST'});
+    if(!response.ok)throw new Error('Could not get a result');
+    const data=await response.json();
+    result.textContent=data.message;
+    result.dataset.kind=data.kind;
+    paintCover();ready=true;
+    hint.textContent='Scratch the silver area to reveal your result.';
+  }catch(err){
+    result.textContent='Please try again.';
+    hint.textContent='Connection problem. Tap the button again.';
+  }finally{button.disabled=false;}
+}
+button.addEventListener('click',newCard);
+window.addEventListener('resize',()=>{if(ready&&!revealed)paintCover()});
+paintCover();
+newCard();
+</script>
+</body>
+</html>
